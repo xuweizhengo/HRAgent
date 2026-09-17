@@ -42,7 +42,7 @@ jobs:
         run: pnpm build
 
       - name: Package Windows NSIS installer
-        run: pnpm dlx electron-builder@26.10.0 --win nsis --x64 --publish never
+        run: npx --yes electron-builder@26.10.0 --win nsis --x64 --publish never
 
       - name: Show release files
         shell: pwsh
