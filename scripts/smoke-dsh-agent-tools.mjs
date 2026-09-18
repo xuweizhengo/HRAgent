@@ -58,7 +58,25 @@ try {
     setup: agentCtx => ctx.agentPresets.mount(agentCtx).then(() => undefined),
   })
   const names = ctx.tools.schemas(handle.agent).map(tool => tool.name).sort()
-  assert.deepEqual(names, [
+  const expected = process.env.AGENTHR_PRODUCT_MODE === 'jobseeker' ? [
+    'jobseeker_browser_action',
+    'jobseeker_browser_snapshot',
+    'jobseeker_browser_status',
+    'jobseeker_get_profile',
+    'jobseeker_get_workspace',
+    'jobseeker_list_opportunities',
+    'jobseeker_open_platform',
+    'jobseeker_save_opportunity',
+    'jobseeker_save_profile',
+    'jobseeker_update_opportunity',
+    process.platform === 'win32' ? 'pwsh' : 'bash',
+    'edit',
+    'glob',
+    'grep',
+    'read',
+    'read_image',
+    'write',
+  ] : [
     'agenthr_append_task_result',
     'agenthr_browser_action',
     'agenthr_browser_snapshot',
@@ -87,8 +105,9 @@ try {
     'read',
     'read_image',
     'write',
-  ].sort())
-  process.stdout.write(`AgentHR preset exposes ${names.length} tools, including standard shell/filesystem surfaces and recruitment tools.\n`)
+  ]
+  assert.deepEqual(names, expected.sort())
+  process.stdout.write(`${process.env.AGENTHR_PRODUCT_MODE === 'jobseeker' ? 'JobPilot' : 'AgentHR'} preset exposes ${names.length} tools.\n`)
 } finally {
   await handle?.dispose()
   await ctx?.fiber.dispose()

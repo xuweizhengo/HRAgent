@@ -53,6 +53,11 @@ export class AgentHrBridge {
     private readonly appendTaskEntry?: (id: string, value: unknown) => Promise<unknown> | unknown,
     private readonly screenshotPage?: () => Promise<unknown>,
     private readonly recordSkillStep?: (id: string, value: unknown) => Promise<unknown> | unknown,
+    private readonly getSeekerProfile?: () => unknown,
+    private readonly saveSeekerProfile?: (value: unknown) => unknown,
+    private readonly listOpportunities?: () => unknown,
+    private readonly saveOpportunity?: (value: unknown) => unknown,
+    private readonly updateOpportunity?: (value: unknown) => unknown,
   ) {}
 
   async start(): Promise<BridgeAddress> {
@@ -275,6 +280,39 @@ export class AgentHrBridge {
         })
         return
       }
+      if (request.method === 'POST' && (request.url === '/v1/seeker/profile' || request.url === '/v1/seeker/opportunities' || request.url === '/v1/seeker/opportunities/update')) {
+        let body = ''
+        let tooLarge = false
+        request.setEncoding('utf8')
+        request.on('data', (chunk: string) => {
+          if (tooLarge) return
+          if (body.length + chunk.length > 32_000) { tooLarge = true; return }
+          body += chunk
+        })
+        request.on('end', () => {
+          if (tooLarge) { response.writeHead(413).end(); return }
+          void Promise.resolve().then(() => {
+            const input = JSON.parse(body || '{}') as unknown
+            if (request.url === '/v1/seeker/profile') {
+              if (!this.saveSeekerProfile) throw new Error('Seeker profile write unavailable')
+              return this.saveSeekerProfile(input)
+            }
+            if (request.url === '/v1/seeker/opportunities') {
+              if (!this.saveOpportunity) throw new Error('Opportunity write unavailable')
+              return this.saveOpportunity(input)
+            }
+            if (!this.updateOpportunity) throw new Error('Opportunity update unavailable')
+            return this.updateOpportunity(input)
+          }).then(result => {
+            response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+            response.end(JSON.stringify({ result }))
+          }).catch(error => {
+            response.writeHead(409, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+            response.end(JSON.stringify({ error: error instanceof Error ? error.message.slice(0, 500) : '求职数据未保存' }))
+          })
+        })
+        return
+      }
       if (request.method !== 'GET') {
         response.writeHead(404).end()
         return
@@ -333,6 +371,28 @@ export class AgentHrBridge {
         } catch {
           response.writeHead(409, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
           response.end(JSON.stringify({ error: '岗位条件无法读取' }))
+        }
+        return
+      }
+      if (request.url === '/v1/seeker/profile') {
+        try {
+          if (!this.getSeekerProfile) throw new Error('Seeker profile unavailable')
+          response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+          response.end(JSON.stringify({ profile: this.getSeekerProfile() }))
+        } catch (error) {
+          response.writeHead(409, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+          response.end(JSON.stringify({ error: error instanceof Error ? error.message.slice(0, 500) : '求职档案无法读取' }))
+        }
+        return
+      }
+      if (request.url === '/v1/seeker/opportunities') {
+        try {
+          if (!this.listOpportunities) throw new Error('Opportunity list unavailable')
+          response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+          response.end(JSON.stringify({ opportunities: this.listOpportunities() }))
+        } catch (error) {
+          response.writeHead(409, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+          response.end(JSON.stringify({ error: error instanceof Error ? error.message.slice(0, 500) : '职位列表无法读取' }))
         }
         return
       }

@@ -4,10 +4,13 @@ import { tmpdir } from 'node:os'
 import { join, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
+const rootManifest = JSON.parse(readFileSync(resolve('package.json'), 'utf8'))
+const productName = rootManifest.build?.productName ?? rootManifest.productName ?? rootManifest.name
+const linuxExecutable = rootManifest.build?.executableName ?? rootManifest.name
 const layouts = {
-  darwin: ['release/mac/AgentHR.app/Contents/MacOS/AgentHR', 'release/mac/AgentHR.app/Contents/Resources/app'],
-  win32: ['release/win-unpacked/AgentHR.exe', 'release/win-unpacked/resources/app'],
-  linux: ['release/linux-unpacked/agenthr', 'release/linux-unpacked/resources/app'],
+  darwin: [`release/mac/${productName}.app/Contents/MacOS/${productName}`, `release/mac/${productName}.app/Contents/Resources/app`],
+  win32: [`release/win-unpacked/${productName}.exe`, 'release/win-unpacked/resources/app'],
+  linux: [`release/linux-unpacked/${linuxExecutable}`, 'release/linux-unpacked/resources/app'],
 }
 const layout = layouts[process.platform]
 if (!layout) throw new Error(`Unsupported package verification platform: ${process.platform}`)

@@ -1,13 +1,16 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
+const rootManifest = JSON.parse(readFileSync(resolve('package.json'), 'utf8'))
+const productName = rootManifest.build?.productName ?? rootManifest.productName ?? rootManifest.name
+const linuxExecutable = rootManifest.build?.executableName ?? rootManifest.name
 const executables = {
-  darwin: 'release/mac/AgentHR.app/Contents/MacOS/AgentHR',
-  win32: 'release/win-unpacked/AgentHR.exe',
-  linux: 'release/linux-unpacked/agenthr',
+  darwin: `release/mac/${productName}.app/Contents/MacOS/${productName}`,
+  win32: `release/win-unpacked/${productName}.exe`,
+  linux: `release/linux-unpacked/${linuxExecutable}`,
 }
 const path = executables[process.platform]
 if (!path) throw new Error(`No GUI smoke layout for ${process.platform}`)
@@ -35,8 +38,8 @@ try {
     throw new Error(`Packaged offline GUI did not finish within 30s: ${output.slice(-1000)}`)
   }
   assert.equal(result.code, 0, output.slice(-1200))
-  assert.match(output, /AGENTHR_OFFLINE_SMOKE_OK/u)
-  process.stdout.write('Packaged Electron window, renderer, preload bridge, and isolated local storage verified without opening recruitment sites.\n')
+  assert.match(output, /JOBPILOT_OFFLINE_SMOKE_OK/u)
+  process.stdout.write('Packaged JobPilot window, renderer, preload bridge, and isolated seeker storage verified without opening job sites.\n')
 } finally {
   clearTimeout(timeoutId)
   if (child.exitCode === null) child.kill('SIGKILL')

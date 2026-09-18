@@ -94,7 +94,7 @@ export class DshHost {
         env: {
           ...process.env,
           ...(runAsNode ? { ELECTRON_RUN_AS_NODE: '1' } : {}),
-          DSH_HOME: home, AGENTHR_WORKSPACE_DIR: this.workspaceDirectory, AGENTHR_BRIDGE_URL: this.bridge.url, AGENTHR_BRIDGE_TOKEN: this.bridge.token,
+          DSH_HOME: home, AGENTHR_PRODUCT_MODE: 'jobseeker', AGENTHR_WORKSPACE_DIR: this.workspaceDirectory, AGENTHR_BRIDGE_URL: this.bridge.url, AGENTHR_BRIDGE_TOKEN: this.bridge.token,
         },
         stdio: ['ignore', 'pipe', 'pipe'],
       })

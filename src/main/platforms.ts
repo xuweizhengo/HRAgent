@@ -3,17 +3,17 @@ export const PLATFORMS = {
     name: 'BOSS 直聘',
     domain: 'zhipin.com',
     pages: {
-      login: 'https://login.zhipin.com',
-      recommend: 'https://www.zhipin.com/web/chat/recommend',
-      messages: 'https://www.zhipin.com/web/chat',
+      login: 'https://www.zhipin.com/',
+      recommend: 'https://www.zhipin.com/',
+      messages: null,
     },
   },
   liepin: {
-    name: '猎聘企业端',
+    name: '猎聘',
     domain: 'liepin.com',
     pages: {
-      login: 'https://lpt.liepin.com/login',
-      recommend: 'https://lpt.liepin.com/recommend',
+      login: 'https://www.liepin.com/',
+      recommend: 'https://www.liepin.com/',
       messages: null,
     },
   },

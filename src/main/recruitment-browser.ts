@@ -44,7 +44,7 @@ export class RecruitmentBrowser {
     this.status = { platform, url: '', title: '', loading: false }
     this.view = new WebContentsView({
       webPreferences: {
-        partition: `persist:agenthr-${platform}-primary`,
+        partition: `persist:jobpilot-${platform}-primary`,
         nodeIntegration: false,
         contextIsolation: true,
         sandbox: true,
@@ -119,7 +119,15 @@ export class RecruitmentBrowser {
   async open(page: RecruitmentPage): Promise<void> {
     const url = PLATFORMS[this.platform].pages[page]
     if (!url) throw new Error(`${PLATFORMS[this.platform].name}的独立沟通页尚未确认`)
-    await this.view.webContents.loadURL(url)
+    try {
+      await this.view.webContents.loadURL(url)
+    } catch (error) {
+      const code = typeof error === 'object' && error !== null && 'code' in error ? String((error as { code?: unknown }).code) : ''
+      if (code !== 'ERR_ABORTED') throw error
+      await new Promise(resolveWait => setTimeout(resolveWait, 120))
+      const current = this.view.webContents.getURL()
+      if (!isRecruitmentUrl(current, this.platform)) throw error
+    }
   }
 
   async reload(): Promise<void> {

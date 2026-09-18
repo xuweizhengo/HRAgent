@@ -126,6 +126,35 @@ interface OpenResume {
   expectedSalary: string
   expectedPosition: string
 }
+interface SeekerProfile {
+  name: string
+  headline: string
+  location: string
+  targetRoles: string[]
+  skills: string[]
+  salaryExpectation: string
+  workPreference: 'onsite' | 'hybrid' | 'remote' | 'flexible'
+  summary: string
+  resumePath: string
+  updatedAt: string
+}
+interface JobOpportunity {
+  id: string
+  platform: 'boss' | 'liepin' | 'other'
+  title: string
+  company: string
+  location: string
+  salary: string
+  url: string
+  description: string
+  status: 'saved' | 'contacted' | 'applied' | 'interview' | 'offer' | 'rejected' | 'archived'
+  matchScore: number | null
+  matchReason: string
+  notes: string
+  createdAt: string
+  updatedAt: string
+}
+
 interface JobBrief {
   role: string
   requirements: string
@@ -187,6 +216,11 @@ interface Window {
     mergeCandidates(value: { primaryId: string; duplicateId: string; expectedPrimaryUpdatedAt: string; expectedDuplicateUpdatedAt: string; confirmed: true }): Promise<CandidateRecord>
     readOpenResume(): Promise<OpenResume>
     saveOpenResume(candidateId: string): Promise<WorkspaceFile>
+    getSeekerProfile(): Promise<SeekerProfile>
+    saveSeekerProfile(value: Partial<SeekerProfile>): Promise<SeekerProfile>
+    listOpportunities(): Promise<JobOpportunity[]>
+    saveOpportunity(value: Partial<JobOpportunity> & Pick<JobOpportunity, 'title' | 'company'>): Promise<JobOpportunity>
+    updateOpportunity(id: string, expectedUpdatedAt: string, value: Partial<JobOpportunity>): Promise<JobOpportunity>
     getJobBrief(): Promise<JobBrief | null>
     listJobs(): Promise<JobList>
     saveJobBrief(brief: JobBrief, expectedUpdatedAt: string): Promise<JobRecord>
@@ -214,6 +248,7 @@ interface Window {
     insertDshPrompt(prompt: string): Promise<void>
     newDshSession(): Promise<void>
     onStatus(listener: (status: AgentHrStatus) => void): () => void
+    onSeekerChanged(listener: () => void): () => void
     onJobsChanged(listener: () => void): () => void
     onCandidatesChanged(listener: () => void): () => void
     onTasksChanged(listener: () => void): () => void

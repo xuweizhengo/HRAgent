@@ -10,8 +10,10 @@ import { JobBriefStore, jobBriefDigest } from './job-brief.js'
 import { AssessmentStore, type ReviewStatus } from './assessments.js'
 import { RecruitmentStore, type CandidateStage, type TaskStatus } from './recruitment-store.js'
 import { WorkspaceStore } from './workspace-store.js'
+import { SeekerStore } from './seeker-store.js'
 
 const root = dirname(fileURLToPath(import.meta.url))
+app.setName('JobPilot')
 const offlineSmoke = process.env.AGENTHR_OFFLINE_SMOKE === '1'
 const offlineChatSmoke = offlineSmoke && process.env.AGENTHR_OFFLINE_CHAT_SMOKE === '1'
 if (offlineSmoke) {
@@ -41,6 +43,7 @@ let dshWindow: BrowserWindow | undefined
 let jobBriefStore: JobBriefStore
 let assessmentStore: AssessmentStore
 let recruitmentStore: RecruitmentStore
+let seekerStore: SeekerStore
 let localWorkspace: WorkspaceStore
 let stopWorkspaceWatcher: (() => void) | undefined
 let quitting = false
@@ -171,7 +174,7 @@ async function syncDshView(status: DshStatus): Promise<void> {
   closeDshView()
   const allowedOrigin = new URL(status.url).origin
   const view = new WebContentsView({ webPreferences: {
-    partition: 'persist:agenthr-dsh', nodeIntegration: false, contextIsolation: true, sandbox: true,
+    partition: 'persist:jobpilot-dsh', nodeIntegration: false, contextIsolation: true, sandbox: true,
   } })
   view.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   view.webContents.on('will-navigate', (event, url) => {
@@ -218,7 +221,7 @@ async function selectPlatform(platform: Platform): Promise<void> {
         if (!window || window.isDestroyed()) return null
         const decision = await dialog.showMessageBox(window, {
           type: 'question',
-          title: '确认下载候选人附件',
+          title: '确认下载求职附件',
           message: `是否下载“${fileName}”？`,
           detail: `确认后将保存到工作目录的 downloads/${platform}/。\n来源：${sourceUrl}`,
           buttons: ['取消', '下载'],
@@ -321,7 +324,7 @@ async function validatePlatform(check: 'candidate_list' | 'resume_detail') {
 async function createWindow(): Promise<void> {
   window = new BrowserWindow({
     width: 1540, height: 920, minWidth: 1100, minHeight: 650,
-    title: 'AgentHR',
+    title: 'JobPilot',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     backgroundColor: '#f4f2ed',
     webPreferences: {
@@ -338,178 +341,89 @@ async function createWindow(): Promise<void> {
   window.on('closed', () => { for (const candidate of browsers.values()) candidate.dispose(); browsers.clear(); browser = undefined; closeDshView(); window = undefined })
   await window.loadFile(join(root, '../renderer/index.html'))
   emitStatus()
-  if (!offlineSmoke) void selectPlatform('liepin').catch(error => console.error('[recruitment browser]', error))
+  if (!offlineSmoke) void selectPlatform('boss').catch(error => console.error('[job browser]', error))
 }
 
 async function verifyOfflineWindow(): Promise<void> {
   if (!window) throw new Error('Offline smoke window missing')
   const result = await window.webContents.executeJavaScript(`(async () => {
     const status = await window.agenthr.getStatus()
-    const jobs = await window.agenthr.listJobs()
-    const cards = await window.agenthr.listAssessments('all')
-    const validations = await window.agenthr.listPlatformValidations()
+    const profileBefore = await window.agenthr.getSeekerProfile()
+    const opportunitiesBefore = await window.agenthr.listOpportunities()
     await window.agenthr.setBrowserMode('split')
-    await new Promise(resolve => setTimeout(resolve, 50))
-    const splitStatus = await window.agenthr.getStatus()
-    const browserToolbarButtons = Array.from(document.querySelectorAll('.browser-toolbar button'))
-    const browserIconTooltips = browserToolbarButtons.length > 0
-      && browserToolbarButtons.every(button => button.getAttribute('data-tooltip')?.trim())
-      && browserToolbarButtons.some(button => button.classList.contains('platform-switch'))
     await window.agenthr.setBrowserControl('human')
-    const humanStatus = await window.agenthr.getStatus()
-    await window.agenthr.setBrowserControl('agent')
-    await window.agenthr.setBrowserMode('collapsed')
-    await window.agenthr.setRightTab('files')
-    const filesStatus = await window.agenthr.getStatus()
     await window.agenthr.setPaneLayout({ navWidth: 250, rightWidth: 600 })
-    const resizedStatus = await window.agenthr.getStatus()
-    await window.agenthr.setPaneLayout({ navCollapsed: true })
-    const collapsedNavStatus = await window.agenthr.getStatus()
-    await window.agenthr.setPaneLayout({ navCollapsed: false, navWidth: 216, rightWidth: 520 })
-    await window.agenthr.setRightTab('browser')
+    const layout = await window.agenthr.getStatus()
     await window.agenthr.setBrowserMode('collapsed')
-    return { title: document.title, text: document.body.innerText,
-      bridge: typeof window.agenthr.openDsh, restartBridge: typeof window.agenthr.restartDsh,
-      tabBridge: typeof window.agenthr.setWorkspaceTab, promptBridge: typeof window.agenthr.insertDshPrompt,
-      browserModeBridge: typeof window.agenthr.setBrowserMode, browserControlBridge: typeof window.agenthr.setBrowserControl,
-      rightTabBridge: typeof window.agenthr.setRightTab, paneLayoutBridge: typeof window.agenthr.setPaneLayout, fileBridge: typeof window.agenthr.pickFiles, sessionBridge: typeof window.agenthr.newDshSession,
-      validationBridge: typeof window.agenthr.validatePlatform,
-      browser: status.browser ?? null, shell: status.shell,
-      splitMode: splitStatus.shell?.browserMode, humanControl: humanStatus.shell?.browserControl,
-      browserIconTooltips,
-      filesTab: filesStatus.shell?.rightTab, navWidth: resizedStatus.shell?.navWidth, rightWidth: resizedStatus.shell?.rightWidth, collapsedNav: collapsedNavStatus.shell?.navCollapsed,
-      jobCount: jobs.jobs.length, cardCount: cards.length, validationCount: validations.length }
-  })()`, true) as { title: string; text: string; bridge: string; restartBridge: string; tabBridge: string; promptBridge: string; browserModeBridge: string; browserControlBridge: string; rightTabBridge: string; paneLayoutBridge: string; fileBridge: string; sessionBridge: string; validationBridge: string; browser: unknown; shell: unknown; splitMode: string; humanControl: string; browserIconTooltips: boolean; filesTab: string; navWidth: number; rightWidth: number; collapsedNav: boolean; jobCount: number; cardCount: number; validationCount: number }
-  if (result.bridge !== 'function' || result.restartBridge !== 'function' || result.tabBridge !== 'function' || result.promptBridge !== 'function'
-    || result.browserModeBridge !== 'function' || result.browserControlBridge !== 'function' || result.validationBridge !== 'function'
-    || result.rightTabBridge !== 'function' || result.paneLayoutBridge !== 'function' || result.fileBridge !== 'function' || result.sessionBridge !== 'function'
-    || result.filesTab !== 'files' || result.navWidth !== 250 || result.rightWidth !== 600 || result.collapsedNav !== true
-    || result.splitMode !== 'split' || result.humanControl !== 'human' || !result.browserIconTooltips
-    || result.browser !== null || result.jobCount !== 0 || result.cardCount !== 0 || result.validationCount !== 0
-    || !result.text.includes('AI 工作台') || !result.text.includes('岗位管理')) {
-    throw new Error('Offline renderer or preload bridge did not initialize as expected')
+    await window.agenthr.setBrowserControl('agent')
+    await window.agenthr.setPaneLayout({ navWidth: 216, rightWidth: 520 })
+    const profile = await window.agenthr.saveSeekerProfile({
+      name: '离线测试用户',
+      headline: 'AI 产品经理',
+      location: '上海',
+      targetRoles: ['AI 产品经理'],
+      skills: ['LLM', '产品设计'],
+      salaryExpectation: '30-50K',
+      workPreference: 'hybrid',
+      summary: '用于 JobPilot 离线 GUI 验证。',
+    })
+    const opportunity = await window.agenthr.saveOpportunity({
+      platform: 'boss',
+      title: 'AI 产品经理',
+      company: '示例科技',
+      location: '上海',
+      salary: '35-50K',
+      status: 'saved',
+      matchScore: 88,
+      matchReason: '离线烟测职位',
+    })
+    const applied = await window.agenthr.updateOpportunity(opportunity.id, opportunity.updatedAt, { status: 'applied' })
+    return {
+      title: document.title,
+      text: document.body.innerText,
+      browser: status.browser ?? null,
+      profileBefore,
+      opportunityCountBefore: opportunitiesBefore.length,
+      profile,
+      applied,
+      navWidth: layout.shell?.navWidth,
+      rightWidth: layout.shell?.rightWidth,
+      getProfileBridge: typeof window.agenthr.getSeekerProfile,
+      saveProfileBridge: typeof window.agenthr.saveSeekerProfile,
+      opportunityBridge: typeof window.agenthr.listOpportunities,
+      browserBridge: typeof window.agenthr.setBrowserMode,
+    }
+  })()`, true) as {
+    title: string
+    text: string
+    browser: unknown
+    profileBefore: { name: string }
+    opportunityCountBefore: number
+    profile: { name: string; targetRoles: string[] }
+    applied: { status: string }
+    navWidth: number
+    rightWidth: number
+    getProfileBridge: string
+    saveProfileBridge: string
+    opportunityBridge: string
+    browserBridge: string
+  }
+  if (result.title !== 'JobPilot'
+    || result.browser !== null
+    || result.profileBefore.name !== ''
+    || result.opportunityCountBefore !== 0
+    || result.profile.name !== '离线测试用户'
+    || result.profile.targetRoles[0] !== 'AI 产品经理'
+    || result.applied.status !== 'applied'
+    || result.navWidth !== 250 || result.rightWidth !== 600
+    || result.getProfileBridge !== 'function' || result.saveProfileBridge !== 'function'
+    || result.opportunityBridge !== 'function' || result.browserBridge !== 'function'
+    || !result.text.includes('AI 求职助手') || !result.text.includes('我的档案') || !result.text.includes('职位机会')) {
+    throw new Error('JobPilot offline renderer, preload bridge or seeker workflow did not initialize as expected')
   }
   const screenshot = await window.capturePage()
-  writeFileSync(join(app.getPath('userData'), 'agenthr-shell-smoke.png'), screenshot.toPNG())
-  navCollapsed = true
-  navWidth = 64
-  syncViewBounds()
-  emitStatus()
-  await new Promise(resolveWait => setTimeout(resolveWait, 80))
-  writeFileSync(join(app.getPath('userData'), 'agenthr-nav-collapsed-smoke.png'), (await window.capturePage()).toPNG())
-  navCollapsed = false
-  navWidth = expandedNavWidth
-  syncViewBounds()
-  emitStatus()
-  setRightTab('files')
-  await new Promise(resolveWait => setTimeout(resolveWait, 80))
-  writeFileSync(join(app.getPath('userData'), 'agenthr-files-smoke.png'), (await window.capturePage()).toPNG())
-  setBrowserMode('collapsed')
-  setRightTab('browser')
-  setBrowserMode('collapsed')
-  await window.webContents.executeJavaScript(`(async () => {
-    const jobsButton = Array.from(document.querySelectorAll('nav button')).find(button => button.textContent?.includes('岗位管理'))
-    jobsButton?.click()
-    await new Promise(resolveWait => setTimeout(resolveWait, 80))
-  })()`)
-  writeFileSync(join(app.getPath('userData'), 'agenthr-jobs-smoke.png'), (await window.capturePage()).toPNG())
-  setBrowserMode('split')
-  await new Promise(resolveWait => setTimeout(resolveWait, 80))
-  writeFileSync(join(app.getPath('userData'), 'agenthr-browser-drawer-smoke.png'), (await window.capturePage()).toPNG())
-  setBrowserMode('collapsed')
-  await window.webContents.executeJavaScript(`(async () => {
-    const tasksButton = Array.from(document.querySelectorAll('nav button')).find(button => button.textContent?.includes('招聘任务'))
-    tasksButton?.click()
-    await new Promise(resolveWait => setTimeout(resolveWait, 80))
-  })()`)
-  writeFileSync(join(app.getPath('userData'), 'agenthr-tasks-smoke.png'), (await window.capturePage()).toPNG())
-  await window.webContents.executeJavaScript(`(async () => {
-    const accountsButton = Array.from(document.querySelectorAll('nav button')).find(button => button.textContent?.includes('平台账号'))
-    accountsButton?.click()
-    await new Promise(resolveWait => setTimeout(resolveWait, 80))
-  })()`)
-  writeFileSync(join(app.getPath('userData'), 'agenthr-accounts-smoke.png'), (await window.capturePage()).toPNG())
-  const smokeJob = jobBriefStore.create({
-    role: 'Java 后端工程师', requirements: '负责招聘平台核心服务开发。', criteria: ['熟悉 Java', '有微服务经验'],
-    salaryRange: '30K-45K', location: '上海', employmentType: 'full_time', status: 'open', hiringTarget: 2,
-  })
-  const failedSmokeTask = recruitmentStore.createTask({ jobId: smokeJob.id, type: 'analyze', platform: 'liepin', title: '读取候选人简历', description: '读取当前打开的候选人简历并按岗位条件逐项分析。' })
-  recruitmentStore.setTaskStatus(failedSmokeTask.id, 'failed', failedSmokeTask.updatedAt, { code: 'PAGE_CHANGED', message: '候选人详情已关闭，请重新打开后重试。' })
-  const smokeCandidates = recruitmentStore.captureVisible([
-    { cardIndex: 0, name: '林清禾', skills: 'Java · Spring Boot', summary: '电商平台研发', fingerprint: 'a'.repeat(64) },
-  ], 'liepin', 'https://lpt.liepin.com/recommend', smokeJob.id)
-  recruitmentStore.captureVisible([
-    { cardIndex: 0, name: '林清禾（BOSS）', skills: 'Java · 微服务', summary: '平台服务研发', fingerprint: 'b'.repeat(64) },
-  ], 'boss', 'https://www.zhipin.com/web/geek/recommend', smokeJob.id)
-  await window.webContents.executeJavaScript(`(async () => {
-    const tasksButton = Array.from(document.querySelectorAll('nav button')).find(button => button.textContent?.includes('招聘任务'))
-    tasksButton?.click()
-    await new Promise(resolveWait => setTimeout(resolveWait, 100))
-  })()`)
-  writeFileSync(join(app.getPath('userData'), 'agenthr-task-error-smoke.png'), (await window.capturePage()).toPNG())
-  const talentResult = await window.webContents.executeJavaScript(`(async () => {
-    const talentButton = Array.from(document.querySelectorAll('nav button')).find(button => button.textContent?.includes('人才库'))
-    talentButton?.click()
-    await new Promise(resolveWait => setTimeout(resolveWait, 120))
-    const stageSelect = document.querySelector('.candidate-rows select')
-    let stageBefore = ''
-    let stageAfter = ''
-    if (stageSelect instanceof HTMLSelectElement) {
-      stageSelect.value = 'interview'
-      stageSelect.dispatchEvent(new Event('change', { bubbles: true }))
-      await new Promise(resolveWait => setTimeout(resolveWait, 40))
-      stageBefore = (await window.agenthr.listCandidates('active')).find(candidate => candidate.displayName.includes('BOSS'))?.stage ?? ''
-      const confirmStage = Array.from(document.querySelectorAll('button')).find(button => button.textContent?.includes('确认修改'))
-      confirmStage?.click()
-      await new Promise(resolveWait => setTimeout(resolveWait, 100))
-      stageAfter = (await window.agenthr.listCandidates('active')).find(candidate => candidate.displayName.includes('BOSS'))?.stage ?? ''
-    }
-    const mergeSelect = document.querySelector('select[aria-label="选择重复候选人"]')
-    if (mergeSelect instanceof HTMLSelectElement && mergeSelect.options.length > 1) {
-      mergeSelect.value = mergeSelect.options[1].value
-      mergeSelect.dispatchEvent(new Event('change', { bubbles: true }))
-      await new Promise(resolveWait => setTimeout(resolveWait, 40))
-      const prepareButton = Array.from(document.querySelectorAll('button')).find(button => button.textContent?.includes('准备合并'))
-      prepareButton?.click()
-      await new Promise(resolveWait => setTimeout(resolveWait, 40))
-    }
-    let rejected = false
-    try {
-      await window.agenthr.mergeCandidates({ primaryId: '${smokeCandidates[0].id}', duplicateId: '${smokeCandidates[0].id}' })
-    } catch (error) { rejected = String(error).includes('明确确认') }
-    const content = document.querySelector('.content-scroll')
-    if (content instanceof HTMLElement) content.scrollTop = content.scrollHeight
-    return { text: document.body.innerText, candidateCount: (await window.agenthr.listCandidates('active')).length, rejected, stageBefore, stageAfter }
-  })()`, true) as { text: string; candidateCount: number; rejected: boolean; stageBefore: string; stageAfter: string }
-  if (talentResult.candidateCount !== 2 || !talentResult.rejected || talentResult.stageBefore !== 'lead' || talentResult.stageAfter !== 'interview'
-    || !talentResult.text.includes('确认合并候选人')) {
-    throw new Error('Talent workspace or merge confirmation guard did not initialize as expected')
-  }
-  writeFileSync(join(app.getPath('userData'), 'agenthr-talent-smoke.png'), (await window.capturePage()).toPNG())
-  const jobPreview = await window.webContents.executeJavaScript(`(async () => {
-    const jobsButton = Array.from(document.querySelectorAll('nav button')).find(button => button.textContent?.includes('岗位管理'))
-    jobsButton?.click()
-    await new Promise(resolveWait => setTimeout(resolveWait, 120))
-    const location = document.querySelector('#job-location')
-    if (location instanceof HTMLInputElement) {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(location, '杭州')
-      location.dispatchEvent(new Event('input', { bubbles: true }))
-    }
-    const preview = Array.from(document.querySelectorAll('button')).find(button => button.textContent?.includes('预览修改'))
-    preview?.click()
-    await new Promise(resolveWait => setTimeout(resolveWait, 50))
-    return { text: document.body.innerText, location: (await window.agenthr.listJobs()).jobs.find(job => job.id === '${smokeJob.id}')?.location }
-  })()`, true) as { text: string; location?: string }
-  if (jobPreview.location !== '上海' || !jobPreview.text.includes('确认更新岗位条件')) throw new Error('Job change preview did not guard the update')
-  writeFileSync(join(app.getPath('userData'), 'agenthr-job-confirm-smoke.png'), (await window.capturePage()).toPNG())
-  const savedLocation = await window.webContents.executeJavaScript(`(async () => {
-    const confirm = Array.from(document.querySelectorAll('button')).find(button => button.textContent?.includes('确认保存'))
-    confirm?.click()
-    await new Promise(resolveWait => setTimeout(resolveWait, 100))
-    return (await window.agenthr.listJobs()).jobs.find(job => job.id === '${smokeJob.id}')?.location
-  })()`, true)
-  if (savedLocation !== '杭州') throw new Error('Confirmed job update was not persisted')
-  console.log('AGENTHR_OFFLINE_SMOKE_OK')
+  writeFileSync(join(app.getPath('userData'), 'jobpilot-shell-smoke.png'), screenshot.toPNG())
+  console.log('JOBPILOT_OFFLINE_SMOKE_OK')
 }
 
 app.whenReady().then(async () => {
@@ -517,6 +431,7 @@ app.whenReady().then(async () => {
   jobBriefStore = new JobBriefStore(app.getPath('userData'))
   assessmentStore = new AssessmentStore(app.getPath('userData'))
   recruitmentStore = new RecruitmentStore(app.getPath('userData'))
+  seekerStore = new SeekerStore(app.getPath('userData'))
   localWorkspace = new WorkspaceStore(app.getPath('userData'))
   stopWorkspaceWatcher = localWorkspace.watchChanges(() => window?.webContents.send('agenthr:workspace-changed'))
   bridge = new AgentHrBridge(
@@ -625,6 +540,26 @@ app.whenReady().then(async () => {
         void insertTaskPrompt(id, true).catch(error => console.error('[skill fallback]', error))
       }, 0)
       return result
+    },
+    () => seekerStore.getProfile(),
+    value => {
+      const profile = seekerStore.saveProfile(value)
+      window?.webContents.send('agenthr:seeker-changed')
+      return profile
+    },
+    () => seekerStore.listOpportunities(),
+    value => {
+      const opportunity = seekerStore.saveOpportunity(value)
+      window?.webContents.send('agenthr:seeker-changed')
+      return opportunity
+    },
+    value => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('职位更新格式无效')
+      const input = value as Record<string, unknown>
+      if (typeof input.id !== 'string' || typeof input.expectedUpdatedAt !== 'string') throw new Error('职位记录版本无效')
+      const opportunity = seekerStore.updateOpportunity(input.id, input.expectedUpdatedAt, input.changes)
+      window?.webContents.send('agenthr:seeker-changed')
+      return opportunity
     },
   )
   const address = await bridge.start()
@@ -767,6 +702,24 @@ app.whenReady().then(async () => {
     window?.webContents.send('agenthr:records-changed')
     return file
   })
+  ipcMain.handle('agenthr:get-seeker-profile', () => seekerStore.getProfile())
+  ipcMain.handle('agenthr:save-seeker-profile', (_event, value: unknown) => {
+    const profile = seekerStore.saveProfile(value)
+    window?.webContents.send('agenthr:seeker-changed')
+    return profile
+  })
+  ipcMain.handle('agenthr:list-opportunities', () => seekerStore.listOpportunities())
+  ipcMain.handle('agenthr:save-opportunity', (_event, value: unknown) => {
+    const opportunity = seekerStore.saveOpportunity(value)
+    window?.webContents.send('agenthr:seeker-changed')
+    return opportunity
+  })
+  ipcMain.handle('agenthr:update-opportunity', (_event, id: unknown, expectedUpdatedAt: unknown, value: unknown) => {
+    if (typeof id !== 'string' || typeof expectedUpdatedAt !== 'string') throw new Error('职位记录版本无效')
+    const opportunity = seekerStore.updateOpportunity(id, expectedUpdatedAt, value)
+    window?.webContents.send('agenthr:seeker-changed')
+    return opportunity
+  })
   ipcMain.handle('agenthr:get-job-brief', () => jobBriefStore.load())
   ipcMain.handle('agenthr:list-jobs', () => jobBriefStore.list())
   ipcMain.handle('agenthr:save-job-brief', (_event, value: unknown, expectedUpdatedAt: unknown) => {
@@ -889,8 +842,8 @@ app.whenReady().then(async () => {
     if (status?.phase !== 'ready' || !status.url) throw new Error('DSH Host 尚未启动')
     if (dshWindow && !dshWindow.isDestroyed()) { dshWindow.focus(); return }
     dshWindow = new BrowserWindow({
-      width: 1100, height: 800, title: 'DSH · AgentHR',
-      webPreferences: { partition: 'persist:agenthr-dsh', nodeIntegration: false, contextIsolation: true, sandbox: true },
+      width: 1100, height: 800, title: 'DSH · JobPilot',
+      webPreferences: { partition: 'persist:jobpilot-dsh', nodeIntegration: false, contextIsolation: true, sandbox: true },
     })
     dshWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
     dshWindow.webContents.on('will-navigate', (event, url) => {

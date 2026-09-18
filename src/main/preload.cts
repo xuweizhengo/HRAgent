@@ -23,6 +23,11 @@ const api = {
   mergeCandidates: (value: unknown) => ipcRenderer.invoke('agenthr:merge-candidates', value),
   readOpenResume: () => ipcRenderer.invoke('agenthr:read-open-resume'),
   saveOpenResume: (candidateId: string) => ipcRenderer.invoke('agenthr:save-open-resume', candidateId),
+  getSeekerProfile: () => ipcRenderer.invoke('agenthr:get-seeker-profile'),
+  saveSeekerProfile: (value: unknown) => ipcRenderer.invoke('agenthr:save-seeker-profile', value),
+  listOpportunities: () => ipcRenderer.invoke('agenthr:list-opportunities'),
+  saveOpportunity: (value: unknown) => ipcRenderer.invoke('agenthr:save-opportunity', value),
+  updateOpportunity: (id: string, expectedUpdatedAt: string, value: unknown) => ipcRenderer.invoke('agenthr:update-opportunity', id, expectedUpdatedAt, value),
   getJobBrief: () => ipcRenderer.invoke('agenthr:get-job-brief'),
   listJobs: () => ipcRenderer.invoke('agenthr:list-jobs'),
   saveJobBrief: (brief: { role: string; requirements: string; criteria: string[] }, expectedUpdatedAt: string) => ipcRenderer.invoke('agenthr:save-job-brief', brief, expectedUpdatedAt),
@@ -53,6 +58,11 @@ const api = {
     const handler = (_event: Electron.IpcRendererEvent, status: unknown) => listener(status)
     ipcRenderer.on('agenthr:status-changed', handler)
     return () => ipcRenderer.removeListener('agenthr:status-changed', handler)
+  },
+  onSeekerChanged: (listener: () => void) => {
+    const handler = () => listener()
+    ipcRenderer.on('agenthr:seeker-changed', handler)
+    return () => ipcRenderer.removeListener('agenthr:seeker-changed', handler)
   },
   onJobsChanged: (listener: () => void) => {
     const handler = () => listener()

@@ -1,5 +1,5 @@
 {
-  "name": "agenthr",
+  "name": "jobpilot",
   "version": "0.1.0",
   "private": true,
   "license": "MIT",
@@ -75,8 +75,8 @@
     "vite": "^7.0.0"
   },
   "build": {
-    "appId": "com.agenthr.desktop",
-    "productName": "AgentHR",
+    "appId": "com.jobpilot.desktop",
+    "productName": "JobPilot",
     "directories": {
       "output": "release"
     },

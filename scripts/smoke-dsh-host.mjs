@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -13,10 +13,13 @@ const port = server.address().port
 await new Promise(resolveClose => server.close(resolveClose))
 
 const packaged = process.argv.includes('--packaged')
+const rootManifest = JSON.parse(readFileSync(resolve('package.json'), 'utf8'))
+const productName = rootManifest.build?.productName ?? rootManifest.productName ?? rootManifest.name
+const linuxExecutable = rootManifest.build?.executableName ?? rootManifest.name
 const packagedLayouts = {
-  darwin: ['release/mac/AgentHR.app/Contents/MacOS/AgentHR', 'release/mac/AgentHR.app/Contents/Resources/app'],
-  win32: ['release/win-unpacked/AgentHR.exe', 'release/win-unpacked/resources/app'],
-  linux: ['release/linux-unpacked/agenthr', 'release/linux-unpacked/resources/app'],
+  darwin: [`release/mac/${productName}.app/Contents/MacOS/${productName}`, `release/mac/${productName}.app/Contents/Resources/app`],
+  win32: [`release/win-unpacked/${productName}.exe`, 'release/win-unpacked/resources/app'],
+  linux: [`release/linux-unpacked/${linuxExecutable}`, 'release/linux-unpacked/resources/app'],
 }
 const packagedLayout = packagedLayouts[process.platform]
 if (packaged && !packagedLayout) throw new Error(`No packaged layout for ${process.platform}`)
@@ -30,6 +33,7 @@ const child = spawn(executable, [cli, 'web', '--patch', patch, '--no-open', '--h
     ...process.env,
     ...(packaged ? { ELECTRON_RUN_AS_NODE: '1' } : {}),
     DSH_HOME: home,
+    ...(productName === 'JobPilot' ? { AGENTHR_PRODUCT_MODE: 'jobseeker' } : {}),
     AGENTHR_BRIDGE_URL: 'http://127.0.0.1:1',
     AGENTHR_BRIDGE_TOKEN: 'offline-smoke-check',
   },
