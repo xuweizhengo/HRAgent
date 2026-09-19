@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 
 const require = createRequire(import.meta.url)
 const builder = require.resolve('electron-builder/cli.js')
-const electronDist = join(dirname(require.resolve('electron/package.json')), 'dist')
+const electronDist = process.env.JOBPILOT_ELECTRON_DIST || join(dirname(require.resolve('electron/package.json')), 'dist')
 const args = [builder, '--dir', '--publish', 'never', `--config.electronDist=${electronDist}`]
 
 if (process.platform === 'darwin') {
