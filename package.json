@@ -2,6 +2,8 @@
   "name": "jobpilot",
   "version": "0.1.0",
   "private": true,
+  "description": "Local-first AI job seeker workbench powered by DSH and an embedded job-site browser.",
+  "author": "JobPilot Contributors",
   "license": "MIT",
   "type": "module",
   "main": "dist/main/main.js",
@@ -85,6 +87,7 @@
       "package.json"
     ],
     "asar": false,
+    "npmRebuild": false,
     "mac": {
       "target": [
         "dmg"
